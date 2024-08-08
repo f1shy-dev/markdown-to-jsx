@@ -1330,33 +1330,33 @@ export function compiler(
       },
     },
 
-    // [RuleType.codeBlock]: {
-    //   match: blockRegex(CODE_BLOCK_R),
-    //   order: Priority.MAX,
-    //   parse(capture /*, parse, state*/) {
-    //     return {
-    //       lang: undefined,
-    //       text: capture[0].replace(/^ {4}/gm, '').replace(/\n+$/, ''),
-    //     }
-    //   },
+    [RuleType.codeBlock]: {
+      match: blockRegex(CODE_BLOCK_R),
+      order: Priority.MAX,
+      parse(capture /*, parse, state*/) {
+        return {
+          lang: undefined,
+          text: capture[0].replace(/^ {4}/gm, '').replace(/\n+$/, ''),
+        }
+      },
 
-    //   render(node, output, state) {
-    //     return (
-    //       <pre key={state.key}>
-    //         <code
-    //           {...node.attrs}
-    //           className={node.lang ? `lang-${node.lang}` : ''}
-    //         >
-    //           {node.text}
-    //         </code>
-    //       </pre>
-    //     )
-    //   },
-    // } as MarkdownToJSX.Rule<{
-    //   attrs?: ReturnType<typeof attrStringToMap>
-    //   lang?: string
-    //   text: string
-    // }>,
+      render(node, output, state) {
+        return (
+          <pre key={state.key}>
+            <code
+              {...node.attrs}
+              className={node.lang ? `lang-${node.lang}` : ''}
+            >
+              {node.text}
+            </code>
+          </pre>
+        )
+      },
+    } as MarkdownToJSX.Rule<{
+      attrs?: ReturnType<typeof attrStringToMap>
+      lang?: string
+      text: string
+    }>,
 
     [RuleType.codeFenced]: {
       match: blockRegex(CODE_BLOCK_FENCED_R),
@@ -1920,6 +1920,10 @@ export function compiler(
     delete rules[RuleType.htmlSelfClosing]
   }
 
+  if (options.disable4SpaceCodeBlocks === true) {
+    delete rules[RuleType.codeBlock]
+  }
+
   const parser = parserFor(rules)
   const emitter: Function = reactFor(createRenderer(rules, options.renderRule))
 
@@ -2286,6 +2290,7 @@ export namespace MarkdownToJSX {
      * use `dangerouslySetInnerHTML` in React.
      */
     disableParsingRawHTML: boolean
+    disable4SpaceCodeBlocks: boolean
 
     /**
      * Forces the compiler to have space between hash sign and the header text which
