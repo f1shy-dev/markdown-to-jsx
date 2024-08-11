@@ -296,6 +296,7 @@ export declare namespace MarkdownToJSX {
          * use `dangerouslySetInnerHTML` in React.
          */
         disableParsingRawHTML: boolean;
+        disable4SpaceCodeBlocks: boolean;
         /**
          * Forces the compiler to have space between hash sign and the header text which
          * is explicitly stated in the most of the markdown specs.

@@ -1921,7 +1921,7 @@ export function compiler(
   }
 
   if (options.disable4SpaceCodeBlocks === true) {
-    delete rules[RuleType.codeBlock]
+    // delete rules[RuleType.codeBlock]
   }
 
   const parser = parserFor(rules)
