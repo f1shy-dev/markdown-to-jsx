@@ -12,47 +12,49 @@ import * as React from 'react'
  * Analogous to `node.type`. Please note that the values here may change at any time,
  * so do not hard code against the value directly.
  */
-export const enum RuleType {
-  blockQuote = '0',
-  breakLine = '1',
-  breakThematic = '2',
-  codeBlock = '3',
-  codeFenced = '4',
-  codeInline = '5',
-  footnote = '6',
-  footnoteReference = '7',
-  gfmTask = '8',
-  heading = '9',
-  headingSetext = '10',
+export const RuleType = {
+  blockQuote: '0',
+  breakLine: '1',
+  breakThematic: '2',
+  codeBlock: '3',
+  codeFenced: '4',
+  codeInline: '5',
+  footnote: '6',
+  footnoteReference: '7',
+  gfmTask: '8',
+  heading: '9',
+  headingSetext: '10',
   /** only available if not `disableHTMLParsing` */
-  htmlBlock = '11',
-  htmlComment = '12',
+  htmlBlock: '11',
+  htmlComment: '12',
   /** only available if not `disableHTMLParsing` */
-  htmlSelfClosing = '13',
-  image = '14',
-  link = '15',
+  htmlSelfClosing: '13',
+  image: '14',
+  link: '15',
   /** emits a `link` 'node', does not render directly */
-  linkAngleBraceStyleDetector = '16',
+  linkAngleBraceStyleDetector: '16',
   /** emits a `link` 'node', does not render directly */
-  linkBareUrlDetector = '17',
+  linkBareUrlDetector: '17',
   /** emits a `link` 'node', does not render directly */
-  linkMailtoDetector = '18',
-  newlineCoalescer = '19',
-  orderedList = '20',
-  paragraph = '21',
-  ref = '22',
-  refImage = '23',
-  refLink = '24',
-  table = '25',
-  tableSeparator = '26',
-  text = '27',
-  textBolded = '28',
-  textEmphasized = '29',
-  textEscaped = '30',
-  textMarked = '31',
-  textStrikethroughed = '32',
-  unorderedList = '33',
-}
+  linkMailtoDetector: '18',
+  newlineCoalescer: '19',
+  orderedList: '20',
+  paragraph: '21',
+  ref: '22',
+  refImage: '23',
+  refLink: '24',
+  table: '25',
+  tableSeparator: '26',
+  text: '27',
+  textBolded: '28',
+  textEmphasized: '29',
+  textEscaped: '30',
+  textMarked: '31',
+  textStrikethroughed: '32',
+  unorderedList: '33',
+} as const
+
+export type RuleType = (typeof RuleType)[keyof typeof RuleType]
 
 const enum Priority {
   /**
@@ -729,8 +731,10 @@ function normalizeAttributeKey(key) {
 }
 
 function attributeValueToJSXPropValue(
+  tag: MarkdownToJSX.HTMLTags,
   key: keyof React.AllHTMLAttributes<Element>,
-  value: string
+  value: string,
+  sanitizeUrlFn: MarkdownToJSX.Options['sanitizer']
 ): any {
   if (key === 'style') {
     return value.split(/;\s?/).reduce(function (styles, kvPair) {
@@ -748,7 +752,7 @@ function attributeValueToJSXPropValue(
       return styles
     }, {})
   } else if (key === 'href' || key === 'src') {
-    return sanitizeUrl(value)
+    return sanitizeUrlFn(value, tag, key)
   } else if (value.match(INTERPOLATION_R)) {
     // return as a string and let the consumer decide what to do with it
     value = value.slice(1, value.length - 1)
@@ -949,7 +953,7 @@ function matchParagraph(
   return [match, captured]
 }
 
-function sanitizeUrl(url: string): string | undefined {
+export function sanitizer(url: string): string {
   try {
     const decoded = decodeURIComponent(url).replace(/[^A-Za-z0-9/:]/g, '')
 
@@ -961,7 +965,7 @@ function sanitizeUrl(url: string): string | undefined {
         )
       }
 
-      return undefined
+      return null
     }
   } catch (e) {
     if (process.env.NODE_ENV !== 'production') {
@@ -1136,12 +1140,13 @@ export function compiler(
   options: MarkdownToJSX.Options = {}
 ) {
   options.overrides = options.overrides || {}
+  options.sanitizer = options.sanitizer || sanitizer
   options.slugify = options.slugify || slugify
   options.namedCodesToUnicode = options.namedCodesToUnicode
     ? { ...namedCodesToUnicode, ...options.namedCodesToUnicode }
     : namedCodesToUnicode
 
-  const createElementFn = options.createElement || React.createElement
+  options.createElement = options.createElement || React.createElement
 
   // JSX custom pragma
   // eslint-disable-next-line no-unused-vars
@@ -1156,7 +1161,7 @@ export function compiler(
   ) {
     const overrideProps = get(options.overrides, `${tag}.props`, {})
 
-    return createElementFn(
+    return options.createElement(
       getTag(tag, options.overrides),
       {
         ...props,
@@ -1226,7 +1231,10 @@ export function compiler(
     return React.createElement(wrapper, { key: 'outer' }, jsx)
   }
 
-  function attrStringToMap(str: string): JSX.IntrinsicAttributes {
+  function attrStringToMap(
+    tag: MarkdownToJSX.HTMLTags,
+    str: string
+  ): JSX.IntrinsicAttributes {
     const attributes = str.match(ATTR_EXTRACTOR_R)
     if (!attributes) {
       return null
@@ -1241,8 +1249,10 @@ export function compiler(
 
         const mappedKey = ATTRIBUTE_TO_JSX_PROP_MAP[key] || key
         const normalizedValue = (map[mappedKey] = attributeValueToJSXPropValue(
+          tag,
           key,
-          value
+          value,
+          options.sanitizer
         ))
 
         if (
@@ -1364,7 +1374,7 @@ export function compiler(
       parse(capture /*, parse, state*/) {
         return {
           // if capture[3] it's additional metadata
-          attrs: attrStringToMap(capture[3] || ''),
+          attrs: attrStringToMap('code', capture[3] || ''),
           lang: capture[2] || undefined,
           text: capture[4],
           type: RuleType.codeBlock,
@@ -1407,13 +1417,13 @@ export function compiler(
       order: Priority.HIGH,
       parse(capture /*, parse*/) {
         return {
-          target: `#${options.slugify(capture[1])}`,
+          target: `#${options.slugify(capture[1], slugify)}`,
           text: capture[1],
         }
       },
       render(node, output, state) {
         return (
-          <a key={state.key} href={sanitizeUrl(node.target)}>
+          <a key={state.key} href={options.sanitizer(node.target, 'a', 'href')}>
             <sup key={state.key}>{node.text}</sup>
           </a>
         )
@@ -1448,7 +1458,7 @@ export function compiler(
       parse(capture, parse, state) {
         return {
           children: parseInline(parse, capture[2], state),
-          id: options.slugify(capture[2]),
+          id: options.slugify(capture[2], slugify),
           level: capture[1].length as MarkdownToJSX.HeadingNode['level'],
         }
       },
@@ -1493,10 +1503,14 @@ export function compiler(
         const noInnerParse =
           DO_NOT_PROCESS_HTML_ELEMENTS.indexOf(tagName) !== -1
 
+        const tag = (
+          noInnerParse ? tagName : capture[1]
+        ).trim() as MarkdownToJSX.HTMLTags
+
         const ast = {
-          attrs: attrStringToMap(capture[2]),
+          attrs: attrStringToMap(tag, capture[2]),
           noInnerParse: noInnerParse,
-          tag: (noInnerParse ? tagName : capture[1]).trim(),
+          tag,
         } as {
           attrs: ReturnType<typeof attrStringToMap>
           children?: ReturnType<MarkdownToJSX.NestedParser> | undefined
@@ -1537,9 +1551,11 @@ export function compiler(
       match: anyScopeRegex(HTML_SELF_CLOSING_ELEMENT_R),
       order: Priority.HIGH,
       parse(capture /*, parse, state*/) {
+        const tag = capture[1].trim() as MarkdownToJSX.HTMLTags
+
         return {
-          attrs: attrStringToMap(capture[2] || ''),
-          tag: capture[1].trim(),
+          attrs: attrStringToMap(tag, capture[2] || ''),
+          tag,
         }
       },
       render(node, output, state) {
@@ -1572,7 +1588,7 @@ export function compiler(
             key={state.key}
             alt={node.alt || undefined}
             title={node.title || undefined}
-            src={sanitizeUrl(node.target)}
+            src={options.sanitizer(node.target, 'img', 'src')}
           />
         )
       },
@@ -1594,7 +1610,11 @@ export function compiler(
       },
       render(node, output, state) {
         return (
-          <a key={state.key} href={sanitizeUrl(node.target)} title={node.title}>
+          <a
+            key={state.key}
+            href={options.sanitizer(node.target, 'a', 'href')}
+            title={node.title}
+          >
             {output(node.children, state)}
           </a>
         )
@@ -1723,7 +1743,7 @@ export function compiler(
           <img
             key={state.key}
             alt={node.alt}
-            src={sanitizeUrl(refs[node.ref].target)}
+            src={options.sanitizer(refs[node.ref].target, 'img', 'src')}
             title={refs[node.ref].title}
           />
         ) : null
@@ -1747,7 +1767,7 @@ export function compiler(
         return refs[node.ref] ? (
           <a
             key={state.key}
-            href={sanitizeUrl(refs[node.ref].target)}
+            href={options.sanitizer(refs[node.ref].target, 'a', 'href')}
             title={refs[node.ref].title}
           >
             {output(node.children, state)}
@@ -1936,7 +1956,10 @@ export function compiler(
         <footer key="footer">
           {footnotes.map(function createFootnote(def) {
             return (
-              <div id={options.slugify(def.identifier)} key={def.identifier}>
+              <div
+                id={options.slugify(def.identifier, slugify)}
+                key={def.identifier}
+              >
                 {def.identifier}
                 {emitter(parser(def.footnote, { inline: true }))}
               </div>
@@ -2005,130 +2028,130 @@ export namespace MarkdownToJSX {
 
   export interface BlockQuoteNode {
     children: MarkdownToJSX.ParserResult[]
-    type: RuleType.blockQuote
+    type: typeof RuleType.blockQuote
   }
 
   export interface BreakLineNode {
-    type: RuleType.breakLine
+    type: typeof RuleType.breakLine
   }
 
   export interface BreakThematicNode {
-    type: RuleType.breakThematic
+    type: typeof RuleType.breakThematic
   }
 
   export interface CodeBlockNode {
-    type: RuleType.codeBlock
+    type: typeof RuleType.codeBlock
     attrs?: JSX.IntrinsicAttributes
     lang?: string
     text: string
   }
 
   export interface CodeFencedNode {
-    type: RuleType.codeFenced
+    type: typeof RuleType.codeFenced
   }
 
   export interface CodeInlineNode {
-    type: RuleType.codeInline
+    type: typeof RuleType.codeInline
     text: string
   }
 
   export interface FootnoteNode {
-    type: RuleType.footnote
+    type: typeof RuleType.footnote
   }
 
   export interface FootnoteReferenceNode {
-    type: RuleType.footnoteReference
+    type: typeof RuleType.footnoteReference
     target: string
     text: string
   }
 
   export interface GFMTaskNode {
-    type: RuleType.gfmTask
+    type: typeof RuleType.gfmTask
     completed: boolean
   }
 
   export interface HeadingNode {
-    type: RuleType.heading
+    type: typeof RuleType.heading
     children: MarkdownToJSX.ParserResult[]
     id: string
     level: 1 | 2 | 3 | 4 | 5 | 6
   }
 
   export interface HeadingSetextNode {
-    type: RuleType.headingSetext
+    type: typeof RuleType.headingSetext
   }
 
   export interface HTMLCommentNode {
-    type: RuleType.htmlComment
+    type: typeof RuleType.htmlComment
   }
 
   export interface ImageNode {
-    type: RuleType.image
+    type: typeof RuleType.image
     alt?: string
     target: string
     title?: string
   }
 
   export interface LinkNode {
-    type: RuleType.link
+    type: typeof RuleType.link
     children: MarkdownToJSX.ParserResult[]
     target: string
     title?: string
   }
 
   export interface LinkAngleBraceNode {
-    type: RuleType.linkAngleBraceStyleDetector
+    type: typeof RuleType.linkAngleBraceStyleDetector
   }
 
   export interface LinkBareURLNode {
-    type: RuleType.linkBareUrlDetector
+    type: typeof RuleType.linkBareUrlDetector
   }
 
   export interface LinkMailtoNode {
-    type: RuleType.linkMailtoDetector
+    type: typeof RuleType.linkMailtoDetector
   }
 
   export interface OrderedListNode {
-    type: RuleType.orderedList
+    type: typeof RuleType.orderedList
     items: MarkdownToJSX.ParserResult[][]
     ordered: true
     start?: number
   }
 
   export interface UnorderedListNode {
-    type: RuleType.unorderedList
+    type: typeof RuleType.unorderedList
     items: MarkdownToJSX.ParserResult[][]
     ordered: false
   }
 
   export interface NewlineNode {
-    type: RuleType.newlineCoalescer
+    type: typeof RuleType.newlineCoalescer
   }
 
   export interface ParagraphNode {
-    type: RuleType.paragraph
+    type: typeof RuleType.paragraph
     children: MarkdownToJSX.ParserResult[]
   }
 
   export interface ReferenceNode {
-    type: RuleType.ref
+    type: typeof RuleType.ref
   }
 
   export interface ReferenceImageNode {
-    type: RuleType.refImage
+    type: typeof RuleType.refImage
     alt?: string
     ref: string
   }
 
   export interface ReferenceLinkNode {
-    type: RuleType.refLink
+    type: typeof RuleType.refLink
     children: MarkdownToJSX.ParserResult[]
     fallbackChildren: MarkdownToJSX.ParserResult[]
     ref: string
   }
 
   export interface TableNode {
-    type: RuleType.table
+    type: typeof RuleType.table
     /**
      * alignment for each table column
      */
@@ -2138,40 +2161,40 @@ export namespace MarkdownToJSX {
   }
 
   export interface TableSeparatorNode {
-    type: RuleType.tableSeparator
+    type: typeof RuleType.tableSeparator
   }
 
   export interface TextNode {
-    type: RuleType.text
+    type: typeof RuleType.text
     text: string
   }
 
   export interface BoldTextNode {
-    type: RuleType.textBolded
+    type: typeof RuleType.textBolded
     children: MarkdownToJSX.ParserResult[]
   }
 
   export interface ItalicTextNode {
-    type: RuleType.textEmphasized
+    type: typeof RuleType.textEmphasized
     children: MarkdownToJSX.ParserResult[]
   }
 
   export interface EscapedTextNode {
-    type: RuleType.textEscaped
+    type: typeof RuleType.textEscaped
   }
 
   export interface MarkedTextNode {
-    type: RuleType.textMarked
+    type: typeof RuleType.textMarked
     children: MarkdownToJSX.ParserResult[]
   }
 
   export interface StrikethroughTextNode {
-    type: RuleType.textStrikethroughed
+    type: typeof RuleType.textStrikethroughed
     children: MarkdownToJSX.ParserResult[]
   }
 
   export interface HTMLNode {
-    type: RuleType.htmlBlock
+    type: typeof RuleType.htmlBlock
     attrs: JSX.IntrinsicAttributes
     children?: ReturnType<MarkdownToJSX.NestedParser> | undefined
     noInnerParse: Boolean
@@ -2180,7 +2203,7 @@ export namespace MarkdownToJSX {
   }
 
   export interface HTMLSelfClosingNode {
-    type: RuleType.htmlSelfClosing
+    type: typeof RuleType.htmlSelfClosing
     attrs: JSX.IntrinsicAttributes
     tag: string
   }
@@ -2256,8 +2279,8 @@ export namespace MarkdownToJSX {
   }
 
   export type Rules = {
-    [K in ParserResult['type']]: K extends RuleType.table
-      ? Rule<Extract<ParserResult, { type: K | RuleType.paragraph }>>
+    [K in ParserResult['type']]: K extends typeof RuleType.table
+      ? Rule<Extract<ParserResult, { type: K | typeof RuleType.paragraph }>>
       : Rule<Extract<ParserResult, { type: K }>>
   }
 
@@ -2379,10 +2402,19 @@ export namespace MarkdownToJSX {
     ) => React.ReactChild
 
     /**
+     * Override the built-in sanitizer function for URLs, etc if desired. The built-in version is available as a library export called `sanitizer`.
+     */
+    sanitizer: (
+      value: string,
+      tag: HTMLTags,
+      attribute: string
+    ) => string | null
+
+    /**
      * Override normalization of non-URI-safe characters for use in generating
      * HTML IDs for anchor linking purposes.
      */
-    slugify: (source: string) => string
+    slugify: (input: string, defaultFn: (input: string) => string) => string
 
     /**
      * Declare the type of the wrapper to be used when there are multiple
